@@ -5,10 +5,18 @@ const socketIO = require('socket.io');
 const cors = require('cors')
 const namespaces = require('./namespaces/index')
 const app = express();
+// const authRoute = require('./routes/auth')
+const indexRoute = require('./routes')
+const middleware = require('./middleware/middleware')
 app.use(cors())
 const httpsOptions = {
     key: fs.readFileSync('./certificates/localhost-key.pem'),
-    cert:fs.readFileSync('./certificates/localhost.pem')
+    cert: fs.readFileSync('./certificates/localhost.pem'),
+    rejectUnauthorized: false,
+    requestCert: false,
+    agent: false
+    
+    
 }
 
 const server = https.createServer(
@@ -18,55 +26,54 @@ const server = https.createServer(
 
 const io = socketIO(server, {
     cors: {
-        origin:'*'
+        origin: '*',
+        
     }
 });
 
 
+let users = {};
+
 let clients = 0;
+// app.use(middleware.checkUser);
+
+const socketIdToUserId = {};
+const userIdToSocketId = {};
+
 io.on('connection', (socket) => {
-    clients++;
     console.log("new connection established !")
-    socket.join(1);
-    socket.on('sendMessage', (data) => {
-        console.log("Here is your message", data.message);
-
-        socket.broadcast.emit('receivedMessage',JSON.stringify(data))
-        
-    })
-
-    socket.on('offer', (offer) => {
-        console.log('offer', socket.id);
-        // socket.to(1).except(socket.id).emit('offer', offer);
-        socket.broadcast.emit("offer",offer)
-      });
     
-    socket.on('answer', (answer) => {
-          console.log("Emit from",socket.id)
-        socket.broadcast.emit('answer', answer);
-      });
-    
-    socket.on('candidate', (candidate) => {
-        console.log("Socket", socket.id);
-        socket.broadcast.emit('candidate', candidate);
-      });
+    console.log("uid", socket.handshake.query.uid);
+    console.log("socket id", socket.id);
+
+    socketIdToUserId[socket.id] = socket.handshake.query.uid;
+    userIdToSocketId[socket.handshake.query.uid] = socket.id;
+
 
     socket.on('disconnect', () => {
-        clients--;
+        // clients--;
         console.log("a client is disconnected !")
     })
 })
 
 
-
-// namespaces(io);
-
+const mapping = {
+    socketIdToUserId: socketIdToUserId,
+    userIdToSocketId: userIdToSocketId,
+}
+namespaces(io,mapping);
+// app.use('/auth', authRoute);
+// indexRoute(app);
 app.get('/', (req, res) => {
     res.send("hello world man ")
 })
 app.get('/getclients', (req, res) => {
     res.json({numberOfClients:clients})
 })
+
+app.get('/getUsers', (req, res) => {
+    res.json({ users: users })
+});
 
 
 server.listen(3001, () => {
